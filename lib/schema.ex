@@ -4,20 +4,19 @@ defmodule JDDF.Schema do
     :form
   ]
 
-  @type t :: %__MODULE__{
-          definitions: mapping,
-          form:
-            {:empty}
-            | {:ref, String.t()}
-            | {:type, type}
-            | {:enum, MapSet.t(String.t())}
-            | {:elements, __MODULE__.t()}
-            | {:properties, mapping, mapping, boolean}
-            | {:values, __MODULE__.t()}
-            | {:discriminator, String.t(), mapping}
-        }
+  @type t :: %__MODULE__{definitions: mapping | nil, form: form}
 
   @type mapping :: %{optional(String.t()) => __MODULE__.t()}
+
+  @type form ::
+          {:empty}
+          | {:ref, String.t()}
+          | {:type, type}
+          | {:enum, MapSet.t(String.t())}
+          | {:elements, __MODULE__.t()}
+          | {:properties, mapping, mapping, boolean}
+          | {:values, __MODULE__.t()}
+          | {:discriminator, String.t(), mapping}
 
   @type type ::
           :boolean
@@ -41,9 +40,12 @@ defmodule JDDF.Schema do
     }
   end
 
+  def verify(schema) do
+  end
+
   defp sub_from_json(json) do
     %__MODULE__{
-      definitions: %{},
+      definitions: nil,
       form: filter_additional(json) |> form_from_json
     }
   end

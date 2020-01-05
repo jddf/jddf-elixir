@@ -2,6 +2,27 @@ defmodule JDDFTest.Schema do
   use ExUnit.Case
   doctest JDDF.Schema
 
+  test "invalid schemas spec" do
+    {:ok, data} = File.read("spec/tests/invalid-schemas.json")
+    test_cases = Jason.decode!(data)
+
+    for %{"name" => name, "schema" => schema} <- test_cases do
+      IO.puts(name)
+
+      ok =
+        try do
+          JDDF.Schema.from_json(schema)
+          false
+        rescue
+          BadMapError -> true
+          Protocol.UndefinedError -> true
+          FunctionClauseError -> true
+        end
+
+      assert ok
+    end
+  end
+
   test "parse empty from json" do
     json = %{
       "definitions" => %{
@@ -12,7 +33,7 @@ defmodule JDDFTest.Schema do
 
     schema = %JDDF.Schema{
       definitions: %{
-        "foo" => %JDDF.Schema{definitions: %{}, form: {:empty}}
+        "foo" => %JDDF.Schema{definitions: nil, form: {:empty}}
       },
       form: {:empty}
     }
@@ -30,7 +51,7 @@ defmodule JDDFTest.Schema do
 
     schema = %JDDF.Schema{
       definitions: %{
-        "foo" => %JDDF.Schema{definitions: %{}, form: {:empty}}
+        "foo" => %JDDF.Schema{definitions: nil, form: {:empty}}
       },
       form: {:ref, "foo"}
     }
@@ -66,7 +87,7 @@ defmodule JDDFTest.Schema do
 
     expected = %JDDF.Schema{
       definitions: %{},
-      form: {:enum, MapSet.new(["foo"])},
+      form: {:enum, MapSet.new(["foo"])}
     }
 
     assert expected === actual
@@ -77,7 +98,7 @@ defmodule JDDFTest.Schema do
 
     expected = %JDDF.Schema{
       definitions: %{},
-      form: {:elements, %JDDF.Schema{definitions: %{}, form: {:empty}}},
+      form: {:elements, %JDDF.Schema{definitions: nil, form: {:empty}}}
     }
 
     assert expected === actual
@@ -95,8 +116,8 @@ defmodule JDDFTest.Schema do
       definitions: %{},
       form: {
         :properties,
-        %{"foo" => %JDDF.Schema{definitions: %{}, form: {:empty}}},
-        %{"foo" => %JDDF.Schema{definitions: %{}, form: {:empty}}},
+        %{"foo" => %JDDF.Schema{definitions: nil, form: {:empty}}},
+        %{"foo" => %JDDF.Schema{definitions: nil, form: {:empty}}},
         true
       }
     }
@@ -109,25 +130,28 @@ defmodule JDDFTest.Schema do
 
     expected = %JDDF.Schema{
       definitions: %{},
-      form: {:values, %JDDF.Schema{definitions: %{}, form: {:empty}}},
+      form: {:values, %JDDF.Schema{definitions: nil, form: {:empty}}}
     }
 
     assert expected === actual
   end
 
   test "parse discriminator from json" do
-    actual = JDDF.Schema.from_json(%{"discriminator" => %{
-      "tag" => "foo",
-      "mapping" => %{"foo" => %{}},
-    }})
+    actual =
+      JDDF.Schema.from_json(%{
+        "discriminator" => %{
+          "tag" => "foo",
+          "mapping" => %{"foo" => %{}}
+        }
+      })
 
     expected = %JDDF.Schema{
       definitions: %{},
       form: {
         :discriminator,
         "foo",
-        %{"foo" => %JDDF.Schema{definitions: %{}, form: {:empty}}},
-      },
+        %{"foo" => %JDDF.Schema{definitions: nil, form: {:empty}}}
+      }
     }
 
     assert expected === actual
