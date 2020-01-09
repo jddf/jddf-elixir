@@ -14,7 +14,7 @@ defmodule JDDF.Validator do
 
     defstruct [:max_depth, :max_errors, :root, :instance_tokens, :schema_tokens, :errors]
 
-    def validate!(vm, schema, instance) do
+    def validate!(vm, schema, instance, parent_tag \\ nil) do
       case schema.form do
         {:empty} ->
           vm
@@ -27,23 +27,6 @@ defmodule JDDF.Validator do
           push_schema(vm, [ref, "definitions"])
           |> validate!(vm.root.definitions[ref], instance)
           |> pop_schema
-
-        {:elements, schema} ->
-          vm = push_schema_token(vm, "elements")
-
-          if is_list(instance) do
-            instance
-            |> Enum.with_index()
-            |> Enum.reduce(vm, fn {elem, index}, vm ->
-              vm
-              |> push_instance_token(Integer.to_string(index))
-              |> validate!(schema, elem)
-              |> pop_instance_token
-            end)
-          else
-            vm |> push_error!
-          end
-          |> pop_schema_token
 
         {:type, type} ->
           vm = push_schema_token(vm, "type")
@@ -118,6 +101,23 @@ defmodule JDDF.Validator do
 
           pop_schema_token(vm)
 
+        {:elements, schema} ->
+          vm = push_schema_token(vm, "elements")
+
+          if is_list(instance) do
+            instance
+            |> Enum.with_index()
+            |> Enum.reduce(vm, fn {elem, index}, vm ->
+              vm
+              |> push_instance_token(Integer.to_string(index))
+              |> validate!(schema, elem)
+              |> pop_instance_token
+            end)
+          else
+            vm |> push_error!
+          end
+          |> pop_schema_token
+
         {:properties, required, optional, additional} ->
           if is_map(instance) do
             vm =
@@ -171,22 +171,15 @@ defmodule JDDF.Validator do
             if additional do
               vm
             else
-              vm =
-                if required !== nil do
-                  push_schema_token(vm, "properties")
-                else
-                  push_schema_token(vm, "optionalProperties")
-                end
-
               Map.keys(instance)
               |> Enum.reduce(vm, fn key, vm ->
-                if !Map.has_key?(required, key) && !Map.has_key?(optional, key) do
+                if !Map.has_key?(required || %{}, key) && !Map.has_key?(optional || %{}, key) &&
+                     key !== parent_tag do
                   push_instance_token(vm, key) |> push_error! |> pop_instance_token
                 else
                   vm
                 end
               end)
-              |> pop_schema_token
             end
           else
             if required !== nil do
@@ -198,8 +191,61 @@ defmodule JDDF.Validator do
             |> pop_schema_token
           end
 
-        _ ->
-          vm
+        {:values, schema} ->
+          vm = push_schema_token(vm, "values")
+
+          if is_map(instance) do
+            instance
+            |> Enum.reduce(vm, fn {key, value}, vm ->
+              vm
+              |> push_instance_token(key)
+              |> validate!(schema, value)
+              |> pop_instance_token
+            end)
+          else
+            vm |> push_error!
+          end
+          |> pop_schema_token
+
+        {:discriminator, tag, mapping} ->
+          vm = push_schema_token(vm, "discriminator")
+
+          if is_map(instance) do
+            if Map.has_key?(instance, tag) do
+              if is_binary(instance[tag]) do
+                if Map.has_key?(mapping, instance[tag]) do
+                  vm
+                  |> push_schema_token("mapping")
+                  |> push_schema_token(instance[tag])
+                  |> validate!(mapping[instance[tag]], instance, tag)
+                  |> pop_schema_token
+                  |> pop_schema_token
+                else
+                  vm
+                  |> push_schema_token("mapping")
+                  |> push_instance_token(tag)
+                  |> push_error!
+                  |> pop_instance_token
+                  |> pop_schema_token
+                end
+              else
+                vm
+                |> push_schema_token("tag")
+                |> push_instance_token(tag)
+                |> push_error!
+                |> pop_instance_token
+                |> pop_schema_token
+              end
+            else
+              vm
+              |> push_schema_token("tag")
+              |> push_error!
+              |> pop_schema_token
+            end
+          else
+            push_error!(vm)
+          end
+          |> pop_schema_token
       end
     end
 

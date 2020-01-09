@@ -18,7 +18,7 @@ defmodule JDDF.Schema do
           | {:type, type}
           | {:enum, MapSet.t(String.t())}
           | {:elements, __MODULE__.t()}
-          | {:properties, mapping, mapping, boolean}
+          | {:properties, mapping | nil, mapping | nil, boolean}
           | {:values, __MODULE__.t()}
           | {:discriminator, String.t(), mapping}
 
@@ -162,12 +162,18 @@ defmodule JDDF.Schema do
         end
 
         required =
-          Map.get(json, "properties", %{})
-          |> Map.new(fn {k, v} -> {k, from_json!(v)} end)
+          if Map.has_key?(json, "properties") do
+            Map.new(json["properties"], fn {k, v} -> {k, from_json!(v)} end)
+          else
+            nil
+          end
 
         optional =
-          Map.get(json, "optionalProperties", %{})
-          |> Map.new(fn {k, v} -> {k, from_json!(v)} end)
+          if Map.has_key?(json, "optionalProperties") do
+            Map.new(json["optionalProperties"], fn {k, v} -> {k, from_json!(v)} end)
+          else
+            nil
+          end
 
         additional = Map.get(json, "additionalProperties", false)
 
@@ -282,8 +288,8 @@ defmodule JDDF.Schema do
         verify!(schema, root)
 
       {:properties, required, optional, _} ->
-        required_keys = MapSet.new(Map.keys(required))
-        optional_keys = MapSet.new(Map.keys(optional))
+        required_keys = MapSet.new(Map.keys(required || %{}))
+        optional_keys = MapSet.new(Map.keys(optional || %{}))
 
         unless MapSet.disjoint?(required_keys, optional_keys) do
           raise InvalidSchemaError, "properties and optionalProperties share key"
@@ -298,7 +304,7 @@ defmodule JDDF.Schema do
 
           case schema.form do
             {:properties, required, optional, _} ->
-              if Map.has_key?(required, tag) || Map.has_key?(optional, tag) do
+              if Map.has_key?(required || %{}, tag) || Map.has_key?(optional || %{}, tag) do
                 raise InvalidSchemaError,
                       "discriminator mapping value has property equal to tag's value"
               end

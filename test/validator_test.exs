@@ -7,28 +7,26 @@ defmodule JDDFTest.Validator do
       data = File.read!("spec/tests/validation/#{file}")
       suites = Jason.decode!(data)
 
-      if file === "006-properties.json" do
-        for %{"name" => name, "schema" => schema, "instances" => instances} <- suites do
-          for {%{"instance" => instance, "errors" => errors}, i} <- Enum.with_index(instances) do
-            @schema schema
-            @instance instance
-            @errors errors
+      for %{"name" => name, "schema" => schema, "instances" => instances} <- suites do
+        for {%{"instance" => instance, "errors" => errors}, i} <- Enum.with_index(instances) do
+          @schema schema
+          @instance instance
+          @errors errors
 
-            test "#{file}/#{name}/#{i}" do
-              expected =
-                Enum.map(@errors, fn error ->
-                  %JDDF.Validator.ValidationError{
-                    instance_path: error["instancePath"] |> String.split("/") |> tl,
-                    schema_path: error["schemaPath"] |> String.split("/") |> tl
-                  }
-                end)
+          test "#{file}/#{name}/#{i}" do
+            expected =
+              Enum.map(@errors, fn error ->
+                %JDDF.Validator.ValidationError{
+                  instance_path: error["instancePath"] |> String.split("/") |> tl,
+                  schema_path: error["schemaPath"] |> String.split("/") |> tl
+                }
+              end)
 
-              validator = %JDDF.Validator{}
-              schema = JDDF.Schema.from_json!(@schema)
-              actual = JDDF.Validator.validate!(validator, schema, @instance)
+            validator = %JDDF.Validator{}
+            schema = JDDF.Schema.from_json!(@schema)
+            actual = JDDF.Validator.validate!(validator, schema, @instance)
 
-              assert Enum.sort(expected) === Enum.sort(actual)
-            end
+            assert Enum.sort(expected) === Enum.sort(actual)
           end
         end
       end
