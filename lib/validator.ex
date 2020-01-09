@@ -3,8 +3,12 @@ defmodule JDDF.Validator do
     defstruct [:instance_path, :schema_path]
   end
 
+  defmodule MaxDepthExceededError do
+    defexception message: "maximum depth exceeded during validation"
+  end
+
   defmodule VM do
-    defmodule TooManyErrors do
+    defmodule TooManyErrorsError do
       defexception [:message, :errors]
     end
 
@@ -12,33 +16,202 @@ defmodule JDDF.Validator do
 
     def validate!(vm, schema, instance) do
       case schema.form do
-        {:empty} -> vm
+        {:empty} ->
+          vm
+
         {:ref, ref} ->
+          if length(vm.schema_tokens) === vm.max_depth do
+            raise JDDF.Validator.MaxDepthExceededError
+          end
+
           push_schema(vm, [ref, "definitions"])
-            |> validate!(vm.root.definitions[ref], instance)
-            |> pop_schema
+          |> validate!(vm.root.definitions[ref], instance)
+          |> pop_schema
+
         {:elements, schema} ->
           vm = push_schema_token(vm, "elements")
 
           if is_list(instance) do
             instance
-              |> Enum.with_index
-              |> Enum.reduce(vm, fn ({elem, index}, vm) ->
-                vm
-                  |> push_instance_token(Integer.to_string(index))
-                  |> validate!(schema, elem)
-                  |> pop_instance_token
-              end)
+            |> Enum.with_index()
+            |> Enum.reduce(vm, fn {elem, index}, vm ->
+              vm
+              |> push_instance_token(Integer.to_string(index))
+              |> validate!(schema, elem)
+              |> pop_instance_token
+            end)
           else
             vm |> push_error!
-          end |> pop_schema_token
+          end
+          |> pop_schema_token
 
-        {:type, :string} ->
+        {:type, type} ->
           vm = push_schema_token(vm, "type")
-          vm = if !is_binary(instance) do push_error!(vm) else vm end
+
+          vm =
+            case type do
+              :boolean ->
+                if !is_boolean(instance) do
+                  push_error!(vm)
+                else
+                  vm
+                end
+
+              :float32 ->
+                if !is_float(instance) && !is_integer(instance) do
+                  push_error!(vm)
+                else
+                  vm
+                end
+
+              :float64 ->
+                if !is_float(instance) && !is_integer(instance) do
+                  push_error!(vm)
+                else
+                  vm
+                end
+
+              :int8 ->
+                validate_int!(vm, instance, -128, 127)
+
+              :uint8 ->
+                validate_int!(vm, instance, 0, 255)
+
+              :int16 ->
+                validate_int!(vm, instance, -32768, 32767)
+
+              :uint16 ->
+                validate_int!(vm, instance, 0, 65535)
+
+              :int32 ->
+                validate_int!(vm, instance, -2_147_483_648, 2_147_483_647)
+
+              :uint32 ->
+                validate_int!(vm, instance, 0, 4_294_967_295)
+
+              :string ->
+                if !is_binary(instance) do
+                  push_error!(vm)
+                else
+                  vm
+                end
+
+              :timestamp ->
+                if !is_binary(instance) || elem(DateTime.from_iso8601(instance), 0) !== :ok do
+                  push_error!(vm)
+                else
+                  vm
+                end
+            end
+
           pop_schema_token(vm)
 
-        _ -> vm
+        {:enum, enum} ->
+          vm = push_schema_token(vm, "enum")
+
+          vm =
+            if MapSet.member?(enum, instance) do
+              vm
+            else
+              push_error!(vm)
+            end
+
+          pop_schema_token(vm)
+
+        {:properties, required, optional, additional} ->
+          if is_map(instance) do
+            vm =
+              if required !== nil do
+                vm = push_schema_token(vm, "properties")
+
+                required
+                |> Enum.reduce(vm, fn {key, sub_schema}, vm ->
+                  vm = push_schema_token(vm, key)
+
+                  vm =
+                    if Map.has_key?(instance, key) do
+                      push_instance_token(vm, key)
+                      |> validate!(sub_schema, instance[key])
+                      |> pop_instance_token
+                    else
+                      push_error!(vm)
+                    end
+
+                  pop_schema_token(vm)
+                end)
+                |> pop_schema_token
+              else
+                vm
+              end
+
+            vm =
+              if optional !== nil do
+                vm = push_schema_token(vm, "optionalProperties")
+
+                optional
+                |> Enum.reduce(vm, fn {key, sub_schema}, vm ->
+                  vm = push_schema_token(vm, key)
+
+                  vm =
+                    if Map.has_key?(instance, key) do
+                      push_instance_token(vm, key)
+                      |> validate!(sub_schema, instance[key])
+                      |> pop_instance_token
+                    else
+                      vm
+                    end
+
+                  pop_schema_token(vm)
+                end)
+                |> pop_schema_token
+              else
+                vm
+              end
+
+            if additional do
+              vm
+            else
+              vm =
+                if required !== nil do
+                  push_schema_token(vm, "properties")
+                else
+                  push_schema_token(vm, "optionalProperties")
+                end
+
+              Map.keys(instance)
+              |> Enum.reduce(vm, fn key, vm ->
+                if !Map.has_key?(required, key) && !Map.has_key?(optional, key) do
+                  push_instance_token(vm, key) |> push_error! |> pop_instance_token
+                else
+                  vm
+                end
+              end)
+              |> pop_schema_token
+            end
+          else
+            if required !== nil do
+              push_schema_token(vm, "properties")
+            else
+              push_schema_token(vm, "optionalProperties")
+            end
+            |> push_error!
+            |> pop_schema_token
+          end
+
+        _ ->
+          vm
+      end
+    end
+
+    defp validate_int!(vm, instance, min, max) do
+      if is_float(instance) || is_integer(instance) do
+        if round(instance) !== instance || instance < min || instance > max do
+          push_error!(vm)
+        else
+          vm
+        end
+      else
+        push_error!(vm)
       end
     end
 
@@ -69,12 +242,19 @@ defmodule JDDF.Validator do
     end
 
     defp push_error!(vm) do
-      error = %JDDF.Validator.ValidationError{
-        instance_path: Enum.reverse(vm.instance_tokens),
-        schema_path: Enum.reverse(vm.schema_tokens |> hd),
-      }
+      errors = [
+        %JDDF.Validator.ValidationError{
+          instance_path: Enum.reverse(vm.instance_tokens),
+          schema_path: Enum.reverse(vm.schema_tokens |> hd)
+        }
+        | vm.errors
+      ]
 
-      %{vm | errors: [error | vm.errors]}
+      if length(errors) === vm.max_errors do
+        raise TooManyErrorsError, message: "too many errors", errors: errors
+      end
+
+      %{vm | errors: errors}
     end
   end
 
@@ -96,7 +276,11 @@ defmodule JDDF.Validator do
       errors: []
     }
 
-    vm = VM.validate!(vm, schema, instance)
-    vm.errors
+    try do
+      vm = VM.validate!(vm, schema, instance)
+      vm.errors
+    rescue
+      e in VM.TooManyErrorsError -> e.errors
+    end
   end
 end

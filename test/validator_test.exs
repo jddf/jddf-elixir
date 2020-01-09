@@ -7,7 +7,7 @@ defmodule JDDFTest.Validator do
       data = File.read!("spec/tests/validation/#{file}")
       suites = Jason.decode!(data)
 
-      if file === "002-ref.json" do
+      if file === "006-properties.json" do
         for %{"name" => name, "schema" => schema, "instances" => instances} <- suites do
           for {%{"instance" => instance, "errors" => errors}, i} <- Enum.with_index(instances) do
             @schema schema
@@ -27,11 +27,41 @@ defmodule JDDFTest.Validator do
               schema = JDDF.Schema.from_json!(@schema)
               actual = JDDF.Validator.validate!(validator, schema, @instance)
 
-              assert expected === actual
+              assert Enum.sort(expected) === Enum.sort(actual)
             end
           end
         end
       end
     end
+  end
+
+  test "max depth" do
+    validator = %JDDF.Validator{max_depth: 3}
+
+    schema =
+      JDDF.Schema.from_json!(%{
+        "definitions" => %{
+          "" => %{"ref" => ""}
+        },
+        "ref" => ""
+      })
+
+    assert_raise JDDF.Validator.MaxDepthExceededError, fn ->
+      JDDF.Validator.validate!(validator, schema, nil)
+    end
+  end
+
+  test "max errors" do
+    validator = %JDDF.Validator{max_errors: 3}
+
+    schema =
+      JDDF.Schema.from_json!(%{
+        "elements" => %{
+          "type" => "string"
+        }
+      })
+
+    errors = JDDF.Validator.validate!(validator, schema, [nil, nil, nil, nil, nil])
+    assert length(errors) === 3
   end
 end
