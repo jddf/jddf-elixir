@@ -4,39 +4,59 @@ defmodule JDDF.Validator do
   end
 
   defmodule VM do
+    defmodule TooManyErrors do
+      defexception [:message, :errors]
+    end
+
     defstruct [:max_depth, :max_errors, :root, :instance_tokens, :schema_tokens, :errors]
 
     def validate!(vm, schema, instance) do
       case schema.form do
         {:empty} -> vm
         {:ref, ref} ->
-          %{vm | errors: validate!(vm, vm.root.definitions[ref], instance).errors}
+          push_schema(vm, [ref, "definitions"])
+            |> validate!(vm.root.definitions[ref], instance)
+            |> pop_schema
         {:elements, schema} ->
           vm = push_schema_token(vm, "elements")
 
           if is_list(instance) do
             instance
               |> Enum.with_index
-              |> Enum.map_reduce(vm, fn (vm, {index, elem}) ->
-                vm = vm.push_instance_token(Integer.to_string(index))
-
-                vm.pop_instance_token
+              |> Enum.reduce(vm, fn ({elem, index}, vm) ->
+                vm
+                  |> push_instance_token(Integer.to_string(index))
+                  |> validate!(schema, elem)
+                  |> pop_instance_token
               end)
           else
-            vm |> push_error! |> pop_schema_token
-          end
+            vm |> push_error!
+          end |> pop_schema_token
+
+        {:type, :string} ->
+          vm = push_schema_token(vm, "type")
+          vm = if !is_binary(instance) do push_error!(vm) else vm end
+          pop_schema_token(vm)
 
         _ -> vm
       end
     end
 
+    defp push_schema(vm, tokens) do
+      %{vm | schema_tokens: [tokens | vm.schema_tokens]}
+    end
+
+    defp pop_schema(vm) do
+      %{vm | schema_tokens: tl(vm.schema_tokens)}
+    end
+
     defp push_schema_token(vm, token) do
-      [tokens, rest] = vm.schema_tokens
+      [tokens | rest] = vm.schema_tokens
       %{vm | schema_tokens: [[token | tokens] | rest]}
     end
 
     defp pop_schema_token(vm) do
-      [[_, tokens], rest] = vm.schema_tokens
+      [[_ | tokens] | rest] = vm.schema_tokens
       %{vm | schema_tokens: [tokens | rest]}
     end
 
@@ -50,8 +70,8 @@ defmodule JDDF.Validator do
 
     defp push_error!(vm) do
       error = %JDDF.Validator.ValidationError{
-        instance_path: List.reverse(instance_tokens),
-        schema_path: List.reverse(schema_tokens |> hd),
+        instance_path: Enum.reverse(vm.instance_tokens),
+        schema_path: Enum.reverse(vm.schema_tokens |> hd),
       }
 
       %{vm | errors: [error | vm.errors]}
