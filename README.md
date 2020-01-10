@@ -1,4 +1,4 @@
-# JDDF
+# jddf-elixir
 
 > Documentation on hexdocs.pm: https://hexdocs.pm/jddf
 
