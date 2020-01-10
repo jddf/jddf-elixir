@@ -1,12 +1,25 @@
 defmodule JDDF.Schema do
+  @moduledoc """
+  Represents a JSON Data Definition Format schema.
+
+  You can construct instances of this type yourself, or you can parse it from
+  JSON-like data using `from_json/1` or `from_json!/1`.
+
+  Not all invariants that JDDF schemas must adhere to are checked by
+  `from_json/1` or `from_json!/1`. To fully verify the correctness of a schema,
+  use `verify/1` or `verify!/1`.
+  """
+
   defmodule InvalidSchemaError do
+    @moduledoc """
+    Indicates that a schema does not conform to the JDDF syntax rules.
+    """
     defexception message: "invalid schema"
+
+    @type t :: %__MODULE__{message: String.t()}
   end
 
-  defstruct [
-    :definitions,
-    :form
-  ]
+  defstruct [:definitions, :form]
 
   @type t :: %__MODULE__{definitions: mapping | nil, form: form}
 
@@ -35,12 +48,42 @@ defmodule JDDF.Schema do
           | :string
           | :timestamp
 
+  @doc """
+  Construct a JDDF schema from parsed JSON data.
+
+  `json` should be an Elixir representation of JSON data. You should first parse
+  the JSON before passing it into `from_json/1`. You can construct this data
+  manually, or parse it using:
+
+    * [`Jason.decode!/2`](https://hexdocs.pm/jason/Jason.html#decode!/2), or
+    * [`Poison.decode!/2`](https://github.com/devinus/poison#usage)
+
+  Most JSON implementations for Elixir are compatible with this function.
+
+      iex> JDDF.Schema.from_json(%{"type" => "uint32"})
+      {:ok, %JDDF.Schema{definitions: nil, form: {:type, :uint32}}}
+      iex> JDDF.Schema.from_json(%{"type" => "nonsense"})
+      {:error, %JDDF.Schema.InvalidSchemaError{message: "invalid type"}}
+  """
+  @spec from_json(json :: String.t()) :: {:ok, Schema.t()} | {:error, InvalidSchemaError.t()}
   def from_json(json) do
     {:ok, from_json!(json)}
   rescue
     e in InvalidSchemaError -> {:error, e}
   end
 
+  @doc """
+  Construct a JDDF schema from parsed JSON data.
+
+  Similar to `from_json/1`, except it will unwrap the result and will raise in
+  case of errors.
+
+      iex> JDDF.Schema.from_json!(%{"type" => "uint32"})
+      %JDDF.Schema{definitions: nil, form: {:type, :uint32}}
+      iex> JDDF.Schema.from_json!(%{"type" => "nonsense"})
+      ** (JDDF.Schema.InvalidSchemaError) invalid type
+  """
+  @spec from_json!(json :: String.t()) :: Schema.t()
   def from_json!(json) do
     unless is_map(json) do
       raise InvalidSchemaError, "schema must be object"
@@ -244,12 +287,43 @@ defmodule JDDF.Schema do
     %__MODULE__{definitions: definitions, form: form}
   end
 
+  @doc """
+  Ensure that the invariants of a JDDF schema are adhered to.
+
+      iex> JDDF.Schema.verify(JDDF.Schema.from_json!(%{}))
+      {:ok, nil}
+
+      iex> schema = JDDF.Schema.from_json!(%{
+      ...>   "properties" => %{ "a" => %{}},
+      ...>   "optionalProperties" => %{ "a" => %{}},
+      ...> })
+      iex> JDDF.Schema.verify(schema)
+      {:error, %JDDF.Schema.InvalidSchemaError{message: "properties and optionalProperties share key"}}
+  """
+  @spec verify(schema :: __MODULE__.t()) :: {:ok, nil} | {:error, InvalidSchemaError.t()}
   def verify(schema) do
     {:ok, verify!(schema)}
   rescue
     e in InvalidSchemaError -> {:error, e}
   end
 
+  @doc """
+  Ensure that the invariants of a JDDF schema are adhered to.
+
+  Similar to `verify/1`, except it will unwrap the result and will raise in case
+  of errors.
+
+      iex> JDDF.Schema.verify!(JDDF.Schema.from_json!(%{}))
+      nil
+
+      iex> schema = JDDF.Schema.from_json!(%{
+      ...>   "properties" => %{ "a" => %{}},
+      ...>   "optionalProperties" => %{ "a" => %{}},
+      ...> })
+      iex> JDDF.Schema.verify!(schema)
+      ** (JDDF.Schema.InvalidSchemaError) properties and optionalProperties share key
+  """
+  @spec verify!(schema :: __MODULE__.t()) :: nil
   def verify!(schema) do
     verify!(schema, schema)
   end
@@ -267,13 +341,13 @@ defmodule JDDF.Schema do
 
     case schema.form do
       {:empty} ->
-        :ok
+        nil
 
       {:type, _} ->
-        :ok
+        nil
 
       {:enum, _} ->
-        :ok
+        nil
 
       {:ref, ref} ->
         if root.definitions === nil do
