@@ -7,7 +7,10 @@ defmodule JDDF.MixProject do
       version: "0.1.0",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: description(),
+      package: package(),
+      docs: docs(),
     ]
   end
 
@@ -23,6 +26,33 @@ defmodule JDDF.MixProject do
     [
       {:jason, "~> 1.1", only: :test},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false}
+    ]
+  end
+
+  defp description() do
+    """
+    An Elixir implementation of JSON Data Definition Format.
+    """
+  end
+
+  defp package() do
+    [
+      maintainers: ["Ulysse Carion"],
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/jddf/jddf-elixir"}
+    ]
+  end
+
+  defp docs() do
+    [
+      main: "readme",
+      name: "Jason",
+      source_ref: "v#{@version}",
+      canonical: "http://hexdocs.pm/jason",
+      source_url: "https://github.com/michalmuskala/jason",
+      extras: [
+        "README.md"
+      ]
     ]
   end
 end
