@@ -46,10 +46,9 @@ defmodule JDDF.MixProject do
   defp docs() do
     [
       main: "readme",
-      name: "Jason",
-      source_ref: "v#{@version}",
-      canonical: "http://hexdocs.pm/jason",
-      source_url: "https://github.com/michalmuskala/jason",
+      name: "JDDF",
+      canonical: "http://hexdocs.pm/jddf",
+      source_url: "https://github.com/jddf/jddf-elixir",
       extras: [
         "README.md"
       ]
