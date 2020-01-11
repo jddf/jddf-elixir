@@ -1,6 +1,6 @@
-# jddf-elixir
+# jddf-elixir [![][hex-badge]][hex-url] [![][ci-badge]][ci-url]
 
-> Documentation on hexdocs.pm: https://hexdocs.pm/jddf
+> Documentation on Hexdocs: https://hexdocs.pm/jddf
 
 This package is an Elixir implementation of **JSON Data Definition Format**. You
 can use this package to:
@@ -8,6 +8,11 @@ can use this package to:
 1. Validate input data against a schema,
 2. Get a list of validation errors from that input data, or
 3. Build your own tooling on top of JSON Data Definition Format
+
+[hex-badge]: https://img.shields.io/hexpm/v/jddf
+[ci-badge]: https://github.com/jddf/jddf-elixir/workflows/Elixir%20CI/badge.svg?branch=master
+[hex-url]: https://hex.pm/packages/jddf
+[ci-url]: https://github.com/jddf/jddf-elixir/actions
 
 ## Installation
 
